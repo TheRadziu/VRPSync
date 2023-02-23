@@ -1,7 +1,6 @@
-﻿// VRPSync by TheRadziu
+// VRPSync by TheRadziu
 // 2023
-// v1.2.1
-//todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
+// v1.2.2
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
 using System.Diagnostics;
@@ -187,6 +186,14 @@ class VRPSync
         Environment.Exit(code);
     }
 
+    public static void remove_current_line()
+    {
+        int currentLineCursor = Console.CursorTop;
+        Console.SetCursorPosition(0, Console.CursorTop);
+        Console.Write(new string(' ', Console.WindowWidth));
+        Console.SetCursorPosition(0, currentLineCursor);
+    }
+
     public static void rclone_transfer(string? hash, string? title)
     {
         int debug = 0;
@@ -281,35 +288,33 @@ class VRPSync
         rcloneProcess.WaitForExit();
         if (rcloneProcess.ExitCode == 0)
         {
-            Console.SetCursorPosition(0, Console.CursorTop);
-            int spaces = Console.BufferWidth;
-            Console.Write(new string(' ', spaces));
+            remove_current_line();
             if (title != null)
             {
-                Console.Write("\rCOPY COMPLETED.\n");
+                Console.Write("COPY COMPLETED.\n");
             }
             else if(hash == "meta.7z")
             {
-                Console.Write("\rDownloaded latest VRP GameList, it's last modification date is: ");
+                Console.Write("Downloaded latest VRP GameList, it's last modification date is: ");
             }
             else
             {
-                Console.Write("\rDOWNLOAD COMPLETED.\n");
+                Console.Write("DOWNLOAD COMPLETED.\n");
             };
         }
         else
         {
-            Console.SetCursorPosition(0, Console.CursorTop);
-            int spaces = Console.BufferWidth;
-            Console.Write(new string(' ', spaces));
-            if(hash == "meta.7z")
-                Console.Write("\rFailed to download latest GameList. VRP server might be down!\n");
-            else if(title != null)
+            remove_current_line();
+            if (hash == "meta.7z")
             {
-                Console.Write("\rFailed to upload "+title+ "Your config might be corrupted!\n");
+                Console.Write("Failed to download latest GameList. VRP server might be down!\n");
+            }
+            else if (title != null)
+            {
+                Console.Write("Failed to upload " + title + "Your config might be corrupted!\n");
             }
             else
-                Console.Write("\rFailed to download "+hash+". VRP server might be down!\n");
+                Console.Write("Failed to download " + hash + ". VRP server might be down!\n");
             exit(-1);
         }
     }
@@ -395,10 +400,13 @@ class VRPSync
             process.Start();
             string output = process.StandardOutput.ReadToEnd();
             process.WaitForExit();
-
             if (process.ExitCode != 0)
             {
                 Console.WriteLine("Error: " + output);
+            }
+            else if (archiveFile != "meta.7z")
+            {
+                Console.WriteLine("EXTRACTION COMPLETED.");
             }
         }
         catch (Exception ex)
