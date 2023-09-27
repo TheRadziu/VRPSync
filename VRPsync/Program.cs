@@ -1,6 +1,6 @@
 // VRPSync by TheRadziu
 // 2023
-// v1.2.3
+// v1.2.2
 //todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
@@ -25,7 +25,7 @@ class Config
     private static readonly string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.ini");
     private static readonly Dictionary<string, string> _defaultSettings = new Dictionary<string, string>()
     {
-        {"# rclonePath can be either C:/rclone.exe for windows or /bin/rclone for linux\nrclonePath", "full_rclone_binary_path_or_command_here"},
+        {"# rclonePath can be either C:\\rclone.exe for windows or /bin/rclone for linux\nrclonePath", "full_rclone_binary_path_or_command_here"},
         {"# if set, it'll use that as custom config path\nrcloneConfigPath", ""},
         {"# sevenzipPath can be either C:/7z.exe for windows or /bin/7z for linux\nsevenzipPath", "full_7zip_binary_path_or_command_here"},
         {"# tempPath is a directory where all temp files will be handled in. Has to be valid directory path\ntempPath", "full_temp_directory_path_here"},
@@ -338,6 +338,10 @@ class VRPSync
 
     public static void rclone_remove(string title)
     {
+        string args = String.Empty;
+        args = $"purge \"{Config.rcloneDestinationDir}/{title}\"";
+        if (Config.rcloneConfigPath != "")
+            args += $" --config=\"{Config.rcloneConfigPath}\"";
         try
         {
             var process = new Process
@@ -345,7 +349,7 @@ class VRPSync
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Config.rclonePath,
-                    Arguments = $"purge \"{Config.rcloneDestinationDir}/{title}\"",
+                    Arguments = args,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
