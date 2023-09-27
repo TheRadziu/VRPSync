@@ -1,6 +1,7 @@
 // VRPSync by TheRadziu
 // 2023
-// v1.2.2
+// v1.2.3
+//todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
 using System.Diagnostics;
@@ -15,6 +16,7 @@ using System.Data;
 class Config
 {
     public static string rclonePath { get; private set; }
+    public static string rcloneConfigPath { get; private set; }
     public static string sevenzipPath { get; private set; }
     public static string tempPath { get; private set; }
     public static string rcloneDestinationDir { get; private set; }
@@ -24,6 +26,7 @@ class Config
     private static readonly Dictionary<string, string> _defaultSettings = new Dictionary<string, string>()
     {
         {"# rclonePath can be either C:/rclone.exe for windows or /bin/rclone for linux\nrclonePath", "full_rclone_binary_path_or_command_here"},
+        {"# if set, it'll use that as custom config path\nrcloneConfigPath", ""},
         {"# sevenzipPath can be either C:/7z.exe for windows or /bin/7z for linux\nsevenzipPath", "full_7zip_binary_path_or_command_here"},
         {"# tempPath is a directory where all temp files will be handled in. Has to be valid directory path\ntempPath", "full_temp_directory_path_here"},
         {"# rcloneDestinationDir has to be valid rclone destination for example my_ftp:, can be subdirectory too, like my_ftp:/backups\nrcloneDestinationDir", "rclone_destination_here"},
@@ -61,6 +64,14 @@ class Config
                         if (!File.Exists(rclonePath) && !Directory.Exists(rclonePath))
                         {
                             Console.WriteLine("Error: rclone not found or specified command is not valid.");
+                            VRPSync.exit(-1);
+                        }
+                        break;
+                    case "rcloneConfigPath":
+                        rcloneConfigPath = value;
+                        if (!File.Exists(rcloneConfigPath) && !Directory.Exists(rcloneConfigPath))
+                        {
+                            Console.WriteLine("Error: rclone config not found.");
                             VRPSync.exit(-1);
                         }
                         break;
@@ -156,13 +167,17 @@ class VRPSync
 {
     internal static string[] RcloneDirList()
     {
+        string args = String.Empty;
         var dirList = new List<string>();
+        args = $"lsf \"{Config.rcloneDestinationDir}\"";
+        if (Config.rcloneConfigPath != "")
+            args += $" --config=\"{Config.rcloneConfigPath}\"";
         var process = new Process()
         {
             StartInfo = new ProcessStartInfo()
             {
                 FileName = Config.rclonePath,
-                Arguments = $"lsf \"{Config.rcloneDestinationDir}\"",
+                Arguments = args,
                 RedirectStandardOutput = true,
                 StandardOutputEncoding = Encoding.UTF8,
                 UseShellExecute = false,
@@ -201,7 +216,9 @@ class VRPSync
         if (title is not null)
         {
             string fullPath = string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, title);
-            args = $"copy  \"{fullPath}\" \"{Config.rcloneDestinationDir}/{title}\" --fast-list --drive-chunk-size 32M --rc";
+            args = $"copy \"{fullPath}\" \"{Config.rcloneDestinationDir}/{title}\" --fast-list --drive-chunk-size 32M --rc";
+            if (Config.rcloneConfigPath != "")
+                args += $" --config=\"{Config.rcloneConfigPath}\"";
         }
         else
         {
@@ -209,7 +226,7 @@ class VRPSync
         }
         if (debug == 1)
         {
-            args = args + $" --log-file={Config.tempPath}/log.txt --log-level DEBUG";
+            args += $" --log-file={Config.tempPath}/log.txt --log-level DEBUG";
         }
         var rcloneProcess = new Process
         {
