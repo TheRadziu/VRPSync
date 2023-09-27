@@ -1,6 +1,6 @@
 // VRPSync by TheRadziu
 // 2023
-// v1.2.2
+// v1.2.3
 //todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
