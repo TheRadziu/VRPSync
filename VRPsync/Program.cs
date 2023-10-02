@@ -1,6 +1,6 @@
 // VRPSync by TheRadziu
 // 2023
-// v1.2.3
+// v1.2.4
 //todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
@@ -27,7 +27,7 @@ class Config
     {
         {"# rclonePath can be either C:\\rclone.exe for windows or /bin/rclone for linux\nrclonePath", "full_rclone_binary_path_or_command_here"},
         {"# if set, it'll use that as custom config path\nrcloneConfigPath", ""},
-        {"# sevenzipPath can be either C:/7z.exe for windows or /bin/7z for linux\nsevenzipPath", "full_7zip_binary_path_or_command_here"},
+        {"# sevenzipPath can be either C:\\7z.exe for windows or /bin/7z for linux\nsevenzipPath", "full_7zip_binary_path_or_command_here"},
         {"# tempPath is a directory where all temp files will be handled in. Has to be valid directory path\ntempPath", "full_temp_directory_path_here"},
         {"# rcloneDestinationDir has to be valid rclone destination for example my_ftp:, can be subdirectory too, like my_ftp:/backups\nrcloneDestinationDir", "rclone_destination_here"},
         {"# if set, http proxy will be enabled for all download actions, it can be either http(s)://user:password@ip:port or http(s)://ip:port for no auth\nproxy", ""},
@@ -120,6 +120,7 @@ class VRPconfig
     {
         try
         {
+            ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true; // Ignore SSL certificate error because they are too lazy to get one
             WebClient client = new WebClient();
             if (Config.proxy != "")
             {
@@ -136,6 +137,7 @@ class VRPconfig
                     client.Proxy = new WebProxy(proxyUrl);
                 }
             }
+
             string json = client.DownloadString("https://wiki.vrpirates.club/downloads/vrp-public.json");
             JObject config = JObject.Parse(json);
             server = (string)config["baseUri"];
