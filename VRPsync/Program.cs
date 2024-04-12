@@ -138,7 +138,7 @@ class VRPconfig
                 }
             }
 
-            string json = client.DownloadString("https://wiki.vrpirates.club/downloads/vrp-public.json");
+            string json = client.DownloadString("https://raw.githubusercontent.com/vrpyou/quest/main/vrp-public.json");
             JObject config = JObject.Parse(json);
             server = (string)config["baseUri"];
             string encodedPassword = (string)config["password"];
