@@ -1,6 +1,6 @@
 // VRPSync by TheRadziu
 // 2023-2025
-// v1.2.5
+// v1.2.6
 //todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
@@ -12,7 +12,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Text;
 using System.Data;
-using System.Text.RegularExpressions;
 
 class Config
 {
@@ -395,7 +394,7 @@ class VRPSync
         }
     }
 
-    public static void ExtractFilesFrom7z(string archiveFile, string[] filesToExtract = null, string password = null)
+    public static bool ExtractFilesFrom7z(string archiveFile, string[] filesToExtract = null, string password = null)
     {
         try
         {
@@ -428,18 +427,23 @@ class VRPSync
             process.WaitForExit();
             if (process.ExitCode != 0)
             {
-                Console.WriteLine("Error: " + output);
+                //Console.WriteLine("Error: " + output);
+                Console.WriteLine("EXTRACTION FAILED. SKIPPING COPY.");
+                Config.corrupted_titles += 1;
+                return false;
             }
             else if (archiveFile != "meta.7z")
             {
                 Console.WriteLine("EXTRACTION COMPLETED.");
             }
+            return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Error: " + ex.Message);
+            //Console.WriteLine("Error: " + ex.Message);
+            Console.WriteLine("EXTRACTION FAILED. SKIPPING COPY.");
             Config.corrupted_titles += 1;
-            //TODO: skip upload step if extraction had errors
+            return false;
         }
     }
 
@@ -468,8 +472,8 @@ class VRPSync
             }
             return dt;
     }
-        public static string Sanitizer(string filename, char replacementChar = '_')
-        {
+    public static string Sanitizer(string filename, char replacementChar = '_')
+    {
             if (string.IsNullOrWhiteSpace(filename))
             {
                 return string.Empty; // Or throw an ArgumentNullException/Exception, idk atm
@@ -506,7 +510,7 @@ class VRPSync
             }
 
             return sanitized;
-        }
+    }
 
         public static void Main()
     {
@@ -523,27 +527,28 @@ class VRPSync
         int old_titles = 0;
         foreach (DataRow row in gamelist.Rows)
         {
-            //if (row["Release Name"] != null && !current_rclone_list.Contains(row["Release Name"])) //9. if release hasn't been downloaded yet:
             if (row["Release Name"] != null && !current_rclone_list.Contains(VRPSync.Sanitizer(row["Release Name"].ToString()))) // 9. if release hasn't been downloaded yet:
                 {
                 new_titles += 1;
-                //Console.WriteLine("DEBUG: " + VRPSync.Sanitizer(row["Release Name"].ToString()));
                 Console.WriteLine("Downloading "+row["Release Name"]);
                 string ReleasenameMD5 = calc_md5(row["Release Name"].ToString()); //calculate MD5 from release name
                 rclone_transfer(ReleasenameMD5, null); //Download the release
                 Console.WriteLine("Extracting " + row["Release Name"]);
-                ExtractFilesFrom7z(ReleasenameMD5+".7z.001", null, VRPconfig.password); //Extract the release from first part
-                remove_all(ReleasenameMD5); //Delete 7z files
-                Console.WriteLine("Copying " + row["Release Name"]);
-                //rclone_transfer(null, row["Release Name"].ToString()); //Copy the extracted directory
-                rclone_transfer(null, VRPSync.Sanitizer(row["Release Name"].ToString())); //Copy the extracted directory
-                //Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, row["Release Name"]), true); //Delete the directory from tempdir
-                Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, VRPSync.Sanitizer(row["Release Name"].ToString())), true); //Delete the directory from tempdir
+                if (ExtractFilesFrom7z(ReleasenameMD5 + ".7z.001", null, VRPconfig.password)) //Extract the release from first part
+                {
+                    remove_all(ReleasenameMD5); //Delete 7z files
+                    Console.WriteLine("Copying " + row["Release Name"]);
+                    rclone_transfer(null, VRPSync.Sanitizer(row["Release Name"].ToString())); //Copy the extracted directory
+                    Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, VRPSync.Sanitizer(row["Release Name"].ToString())), true); //Delete the directory from tempdir
+                }
+                else
+                {
+                    remove_all(ReleasenameMD5); //Delete 7z files
+                }
             }
         }
         foreach (string release_name_dir in current_rclone_list)
         {
-            //if (!gamelist.AsEnumerable().Any(row => row.Field<string>("Release Name") == release_name_dir))
             if (!gamelist.AsEnumerable().Any(row => VRPSync.Sanitizer(row.Field<string>("Release Name")) == release_name_dir))
             {
                 old_titles += 1;
