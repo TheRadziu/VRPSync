@@ -1,6 +1,6 @@
 // VRPSync by TheRadziu
-// 2023
-// v1.2.4
+// 2023-2025
+// v1.2.5
 //todo: fix rouge new line between copying/downloading XXX and COPY/DOWNLOAD COMPLETED + after Proxy is found and enabled (same issue in rclone_transfer)
 //todo: handle when config doesnt have all setting lines - Set them to null before foreach?
 
@@ -12,6 +12,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Text;
 using System.Data;
+using System.Text.RegularExpressions;
 
 class Config
 {
@@ -21,6 +22,7 @@ class Config
     public static string tempPath { get; private set; }
     public static string rcloneDestinationDir { get; private set; }
     public static string proxy { get; private set; }
+    public static int corrupted_titles = 0;
 
     private static readonly string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.ini");
     private static readonly Dictionary<string, string> _defaultSettings = new Dictionary<string, string>()
@@ -137,7 +139,6 @@ class VRPconfig
                     client.Proxy = new WebProxy(proxyUrl);
                 }
             }
-
             string json = client.DownloadString("https://vrpirates.wiki/downloads/vrp-public.json");
             JObject config = JObject.Parse(json);
             server = (string)config["baseUri"];
@@ -327,14 +328,16 @@ class VRPSync
             if (hash == "meta.7z")
             {
                 Console.Write("Failed to download latest GameList. VRP server might be down!\n");
+                exit(-1);
             }
             else if (title != null)
             {
-                Console.Write("Failed to upload " + title + "Your config might be corrupted!\n");
+                Console.Write("Failed to upload " + title + " Your config might be corrupted!\n");
             }
             else
                 Console.Write("Failed to download " + hash + ". VRP server might be down!\n");
-            exit(-1);
+            //exit(-1);
+            Config.corrupted_titles += 1;
         }
     }
 
@@ -435,6 +438,8 @@ class VRPSync
         catch (Exception ex)
         {
             Console.WriteLine("Error: " + ex.Message);
+            Config.corrupted_titles += 1;
+            //TODO: skip upload step if extraction had errors
         }
     }
 
@@ -463,8 +468,47 @@ class VRPSync
             }
             return dt;
     }
+        public static string Sanitizer(string filename, char replacementChar = '_')
+        {
+            if (string.IsNullOrWhiteSpace(filename))
+            {
+                return string.Empty; // Or throw an ArgumentNullException/Exception, idk atm
+            }
+            char[] invalidChars = Path.GetInvalidFileNameChars()
+                                    .Concat(Path.GetInvalidPathChars())
+                                    .Distinct() // Remove duplicates if any
+                                    .ToArray();
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(filename.Length);
 
-public static void Main()
+            foreach (char c in filename)
+            {
+                if (Array.IndexOf(invalidChars, c) >= 0)
+                {
+                    sb.Append(replacementChar);
+                }
+                else if (c == replacementChar) // Avoid consecutive replacement characters if the original already had it
+                {
+                    // If the character is already the replacement character, append it
+                    sb.Append(c);
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+
+            string sanitized = sb.ToString();
+
+            // Ensure the filename is not empty after sanitization (e.g., if original was "<>")
+            if (string.IsNullOrWhiteSpace(sanitized))
+            {
+                sanitized = "sanitized_file"; // Default fallback name
+            }
+
+            return sanitized;
+        }
+
+        public static void Main()
     {
         Console.CursorVisible = false; //0. disable blinking thingy.
         Config.LoadSettings(); //1. Load local settings from config.ini file
@@ -479,9 +523,11 @@ public static void Main()
         int old_titles = 0;
         foreach (DataRow row in gamelist.Rows)
         {
-            if (row["Release Name"] != null && !current_rclone_list.Contains(row["Release Name"])) //9. if release hasn't been downloaded yet:
-            {
+            //if (row["Release Name"] != null && !current_rclone_list.Contains(row["Release Name"])) //9. if release hasn't been downloaded yet:
+            if (row["Release Name"] != null && !current_rclone_list.Contains(VRPSync.Sanitizer(row["Release Name"].ToString()))) // 9. if release hasn't been downloaded yet:
+                {
                 new_titles += 1;
+                //Console.WriteLine("DEBUG: " + VRPSync.Sanitizer(row["Release Name"].ToString()));
                 Console.WriteLine("Downloading "+row["Release Name"]);
                 string ReleasenameMD5 = calc_md5(row["Release Name"].ToString()); //calculate MD5 from release name
                 rclone_transfer(ReleasenameMD5, null); //Download the release
@@ -489,13 +535,16 @@ public static void Main()
                 ExtractFilesFrom7z(ReleasenameMD5+".7z.001", null, VRPconfig.password); //Extract the release from first part
                 remove_all(ReleasenameMD5); //Delete 7z files
                 Console.WriteLine("Copying " + row["Release Name"]);
-                rclone_transfer(null, row["Release Name"].ToString()); //Copy the extracted directory
-                Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, row["Release Name"]), true); //Delete the directory from tempdir
+                //rclone_transfer(null, row["Release Name"].ToString()); //Copy the extracted directory
+                rclone_transfer(null, VRPSync.Sanitizer(row["Release Name"].ToString())); //Copy the extracted directory
+                //Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, row["Release Name"]), true); //Delete the directory from tempdir
+                Directory.Delete(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, VRPSync.Sanitizer(row["Release Name"].ToString())), true); //Delete the directory from tempdir
             }
         }
         foreach (string release_name_dir in current_rclone_list)
         {
-            if (!gamelist.AsEnumerable().Any(row => row.Field<string>("Release Name") == release_name_dir))
+            //if (!gamelist.AsEnumerable().Any(row => row.Field<string>("Release Name") == release_name_dir))
+            if (!gamelist.AsEnumerable().Any(row => VRPSync.Sanitizer(row.Field<string>("Release Name")) == release_name_dir))
             {
                 old_titles += 1;
                 Console.WriteLine("THIS IS NOT ON GAMELIST, REMOVING: " + release_name_dir);
@@ -503,9 +552,9 @@ public static void Main()
             }
         }
         File.Move(string.Format("{0}{1}{2}", Config.tempPath, Path.DirectorySeparatorChar, "VRP-GameList.txt"), string.Format("{0}{1}{2}", AppDomain.CurrentDomain.BaseDirectory, Path.DirectorySeparatorChar, "VRP-GameList.txt"), true);
-        if (new_titles != 0 || old_titles != 0)
+        if (new_titles != 0 || old_titles != 0 || Config.corrupted_titles != 0)
         {
-            Console.WriteLine(string.Format("New Titles: {0} | Removed Titles: {1}", new_titles, old_titles));
+            Console.WriteLine(string.Format("New Titles: {0} | Removed Titles: {1} | Corrupted Titles: {2}", new_titles, old_titles, Config.corrupted_titles));
         }
         else
         {
